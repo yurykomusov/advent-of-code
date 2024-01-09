@@ -16,6 +16,18 @@ type Card =
             | 'A' -> 14
             | c -> failwith <| sprintf "invalid character: %c" c
 
+let toShortString (cards : Card array): string =
+    let characters = 
+        cards
+        |> Array.map (
+            fun c -> 
+                match c with
+                | Number 10 -> "T"
+                | Number n -> n.ToString()
+                | Character c -> c.ToString()
+        )
+    String.concat "" characters
+
 let (|Joker|_|) (card : Card) = 
     match card with
     | Character 'J' -> Some()
@@ -96,33 +108,42 @@ let findCombination (cards: Card array) =
         | s when isTwoOfKind s -> OnePair
         | _ -> HighCard
 
-    cards 
-        |> Array.filter (fun c -> 
-            match c with
-            | Joker -> true
-            | _ -> false)
-        |> Array.fold (fun state _ -> handleJoker state) original
+    let isThreeJokers = 
+        (match original with | ThreeOfKind -> true | _ -> false) && 
+        (cards |> Array.filter (fun i -> match i with | Joker -> true | _ -> false) |> Array.length = 3)
 
-let toShortString (cards : Card array): string =
-    let characters = 
-        cards
-        |> Array.map (
-            fun c -> 
+    let isTwoJokers = 
+        (match original with | OnePair -> true | _ -> false) && 
+        (cards |> Array.filter (fun i -> match i with | Joker -> true | _ -> false) |> Array.length = 2)
+
+    if isThreeJokers then // corner case
+        printfn "CORNER CASE: %s" (toShortString cards)
+        FourOfKind
+    elif isTwoJokers then
+        printfn "ANOTHER CORNER CASE: %s" (toShortString cards)
+        ThreeOfKind
+    else
+        cards 
+            |> Array.filter (fun c -> 
                 match c with
-                | Number 10 -> "T"
-                | Number n -> n.ToString()
-                | Character c -> c.ToString()
-        )
-    String.concat "" characters
+                | Joker -> true
+                | _ -> false)
+            |> Array.fold (fun state _ -> handleJoker state) original
 
 let calcHandPower (cards: Card array) = 
     let combination = findCombination cards
-    
+
+    let customRank (card: Card) = 
+        match cards with
+        // | [| Joker; Joker; Joker; Joker; Joker |] -> 11
+        | _ -> card.rank 
+
+
     let powerOfHighestCards = 
         cards 
         |> Array.rev 
         |> Array.indexed 
-        |> Array.sumBy (fun (index, item) -> (float item.rank) * (15.  ** index))
+        |> Array.sumBy (fun (index, item) -> (float (customRank item)) * (15.  ** index))
 
 
     float combination.rank * (15.** 6) + powerOfHighestCards
@@ -136,10 +157,10 @@ async {
     |> Array.map (fun arr -> (arr[0], arr[1]))
     |> Array.map (fun (cardString, bidString) -> (parseSet cardString, int bidString))
     |> Array.sortBy (fun (cards, _) -> (calcHandPower cards))
-    //|> Array.iter (fun (hand, bid) -> printfn "%s %A" <| (toShortString hand) <| (findCombination hand))
+    // |> Array.iter (fun (hand, bid) -> printfn "%s %A" <| (toShortString hand) <| (findCombination hand))
     
     |> Array.indexed
-    |> Array.sumBy (fun (power, (_, bid)) -> bid * (power + 1))
+    |> Array.sumBy (fun (index, (_, bid)) -> bid * (index + 1))
     |> printfn "result: %A" 
 
 } |> Async.RunSynchronously
