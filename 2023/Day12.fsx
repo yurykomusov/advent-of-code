@@ -1,62 +1,56 @@
 open System
 open System.IO
 
-let rec indexes (size: int) (n : int) (start : int) : int seq seq = 
+let rec getCombinationIndexes (size: int) (n : int) (start : int) : int seq seq = 
     // System.Console.WriteLine($"size - {size} n - {n} start - {start}")
     seq {
         if n > 0 then
             for i in start..size - 1 do
-                let start' = i + 1
-                let arr = seq { 
-                    let inner = indexes size (n - 1) start' -> ([i] @ j) 
-                }
+                let arr = getCombinationIndexes size (n - 1) (i + 1)
                 
-                if Seq.isEmpty arr then
-                    yield [i]
+                if Seq.isEmpty arr && n = 1 then
+                    yield seq { yield i }
                 else
                     for ii in arr do
-                        yield ii
+                        yield Seq.append (seq { yield i }) ii
     }
     //|> Seq.filter (fun i -> List.length i = n)
 
-let generateCombination (size : int) (indexes : int list) : char array =
-    let result = Array.init size (fun i -> 
-        match indexes |> (List.tryFind (fun ii -> ii = i)) with
-        | Some _ -> '#'
-        | None -> '.' )
-    result
+let getDamageIndexes (input : char array) =
+    input 
+    |> Array.indexed
+    |> Array.filter (fun (index, element) -> element = '#')
+    |> Array.map (fun (index, element) -> index)
 
-let generateCombinations (size : int) (n : int) = 
-    indexes size n 0 |> Seq.map (generateCombination size)
+let getMissingIndexes (input : char array) =
+    input 
+    |> Array.indexed
+    |> Array.filter (fun (index, element) -> element = '?')
+    |> Array.map (fun (index, element) -> index)
 
-let test (input : string) (testArr: int array) = 
-    let transformed = 
-        input.Split('.', System.StringSplitOptions.RemoveEmptyEntries)
-        |> Array.map(fun i -> i.Length)
-    
-    if transformed.Length <> testArr.Length then
+
+
+let applyFoundDamages (indexes : int array) (damageIndexes : int array) =
+    Array.concat [indexes; damageIndexes]
+let fixIndexes (indexes : int array) (missing : int array) =
+    //printf "fixIndexes %A - %A" indexes missing 
+    let result = indexes |> Array.map (fun idx -> missing[idx])
+    //printfn "; result - %A" result
+    result 
+
+let foldDamages (indexes : int array) =
+    indexes 
+    |> Array.sort
+    |> Array.mapi (fun index element -> index - element)
+    |> Array.countBy (fun i -> i)
+    |> Array.map (fun (key, count) -> count)
+
+let test (possible : int array) (expected: int array) = 
+    if possible.Length <> expected.Length then
         false
     else
-        (transformed, testArr) ||> Array.forall2 (fun a b -> a = b)
+        (possible, expected) ||> Array.forall2 (fun a b -> a = b)
     // ###..## -> [3, 2]
-
-
-// let combination = 
-//     (indexes 4 2 0)
-//     |> List.map (generateCombination 4)
-//     |> List.head
-
-let heal (combo : char array) (damaged: string) = 
-    let arr = damaged.ToCharArray()
-    let missingIndexes = 
-        arr 
-        |> Array.indexed 
-        |> Array.filter(fun (idx, c) -> c = '?') 
-        |> Array.map (fun (idx, c) -> idx)
-
-    for i in 0..missingIndexes.Length - 1 do
-        arr[missingIndexes[i]] <- combo[i]
-    arr
 
 let parseLine(input : string) : string * (int array) = 
     let (str, freq) = 
@@ -66,13 +60,13 @@ let parseLine(input : string) : string * (int array) =
             pattern2.Split(',') |> Array.map int)
         | _ -> failwith "incorrect input format"
     
-    (String.concat "?" <| Array.replicate 4 str, Array.concat <| Array.replicate 4 freq)
+    (String.concat "?" <| Array.replicate 1 str, Array.concat <| Array.replicate 1 freq)
 
 
 // calculate how many # and . expected from input
-let findHints (str : string) (frequencies : (int array)) =
-    let countMissing = str.ToCharArray() |> Array.filter (fun i -> i = '?') |> Array.length
-    let countFoundDamaged = str.ToCharArray() |> Array.filter (fun i -> i = '#') |> Array.length
+let findHints (charArr : char array) (frequencies : (int array)) =
+    let countMissing = charArr |> Array.filter (fun i -> i = '?') |> Array.length
+    let countFoundDamaged = charArr |> Array.filter (fun i -> i = '#') |> Array.length
     let countAllDamaged = frequencies |> Array.sum
     let countMissingDamaged = countAllDamaged - countFoundDamaged
 
@@ -86,40 +80,37 @@ async {
     let path = Path.Combine(__SOURCE_DIRECTORY__, "Day12.txt"); 
     let! lines = File.ReadAllLinesAsync(path) |> Async.AwaitTask
 
-    let lines = [| ".??..??...?##. 1,1,3" |]
+    // let lines = [| ".??..??...?##. 1,1,3" |]
     
     lines
     |> Array.map parseLine
     |> Array.map (
         fun (damagedStr, frequencies) -> 
-            let (missingDamaged, missingAll) = findHints damagedStr frequencies
-            let combinations = generateCombinations missingAll missingDamaged |> Seq.cache
+            let damagedStrCharArr = damagedStr.ToCharArray()
+            let (missingDamaged, missingAll) = findHints damagedStrCharArr frequencies
+            let indexesSeq = getCombinationIndexes missingAll missingDamaged 0
+            let foundDamageIndexes = getDamageIndexes damagedStrCharArr
+            let foundMissingIndexes = getMissingIndexes damagedStrCharArr
 
-            printfn $"possibly damaged: {missingDamaged} of {missingAll}"
-            printfn $"combinations : {combinations |> Seq.length}"
+            let mutable positive = 0
+            let mutable counter = 0
 
-            let compatibleCombinations = 
-                combinations 
-                |> Seq.filter (fun combo -> 
-                    let healed = (heal combo damagedStr) |> String.Concat
-                    let compatible = test healed frequencies
-                   
-                    //if compatible then
-                    // printfn "testing : %s for %A -> %b" healed frequencies compatible
 
-                    compatible)
-            
-            // printfn "%A: %d" frequencies (compatibleCombinations |> Seq.length)
-            
-            // for cc in compatibleCombinations do
-            //     Console.ReadLine() |> ignore
-            //     printfn "%s" (String.Concat(cc))
-                
-            let result = Seq.length compatibleCombinations
+            for indexes in indexesSeq do
+                let indexArr = indexes |> Seq.toArray
 
-            printfn "%A - %d" frequencies result
+                let allDamage = applyFoundDamages (fixIndexes indexArr foundMissingIndexes) foundDamageIndexes
+                let testFrequencies = foldDamages allDamage
 
-            result)
+                if test testFrequencies frequencies then
+                    positive <- positive + 1
+
+                counter <- counter + 1 
+
+                if counter % 10000 = 0 then
+                    printfn "over 10000"
+            positive
+        )
     |> Array.sum
     |> printfn "result: %d"
 
