@@ -1,56 +1,8 @@
 open System
 open System.IO
 
-let rec getCombinationIndexes (size: int) (n : int) (start : int) : int seq seq = 
-    // System.Console.WriteLine($"size - {size} n - {n} start - {start}")
-    seq {
-        if n > 0 then
-            for i in start..size - 1 do
-                let arr = getCombinationIndexes size (n - 1) (i + 1)
-                
-                if Seq.isEmpty arr && n = 1 then
-                    yield seq { yield i }
-                else
-                    for ii in arr do
-                        yield Seq.append (seq { yield i }) ii
-    }
-    //|> Seq.filter (fun i -> List.length i = n)
-
-let getDamageIndexes (input : char array) =
-    input 
-    |> Array.indexed
-    |> Array.filter (fun (index, element) -> element = '#')
-    |> Array.map (fun (index, element) -> index)
-
-let getMissingIndexes (input : char array) =
-    input 
-    |> Array.indexed
-    |> Array.filter (fun (index, element) -> element = '?')
-    |> Array.map (fun (index, element) -> index)
-
-
-
-let applyFoundDamages (indexes : int array) (damageIndexes : int array) =
-    Array.concat [indexes; damageIndexes]
-let fixIndexes (indexes : int array) (missing : int array) =
-    //printf "fixIndexes %A - %A" indexes missing 
-    let result = indexes |> Array.map (fun idx -> missing[idx])
-    //printfn "; result - %A" result
-    result 
-
-let foldDamages (indexes : int array) =
-    indexes 
-    |> Array.sort
-    |> Array.mapi (fun index element -> index - element)
-    |> Array.countBy (fun i -> i)
-    |> Array.map (fun (key, count) -> count)
-
-let test (possible : int array) (expected: int array) = 
-    if possible.Length <> expected.Length then
-        false
-    else
-        (possible, expected) ||> Array.forall2 (fun a b -> a = b)
-    // ###..## -> [3, 2]
+let sw = new System.Diagnostics.Stopwatch()
+sw.Start()
 
 let parseLine(input : string) : string * (int array) = 
     let (str, freq) = 
@@ -62,65 +14,102 @@ let parseLine(input : string) : string * (int array) =
     
     (String.concat "?" <| Array.replicate 1 str, Array.concat <| Array.replicate 1 freq)
 
+let testExact (input : string) (freqExpected : int array) : int = 
+    match (input, freqExpected) with
+    | ("", [||]) -> 1
+    | ("", arr) -> 0
+    | ("#", [|1|]) -> 1
+    | ("#", [|0|]) -> 0
+    | (s, freq) -> 
+        let freqActual = 
+            input.Split('.', StringSplitOptions.RemoveEmptyEntries)
+            |> Array.map _.Length
 
-// calculate how many # and . expected from input
-let findHints (charArr : char array) (frequencies : (int array)) =
-    let countMissing = charArr |> Array.filter (fun i -> i = '?') |> Array.length
-    let countFoundDamaged = charArr |> Array.filter (fun i -> i = '#') |> Array.length
-    let countAllDamaged = frequencies |> Array.sum
-    let countMissingDamaged = countAllDamaged - countFoundDamaged
+        if freqActual.Length = freqExpected.Length && ((freqActual, freqExpected) ||> Array.forall2 (fun a b -> a = b)) then
+            1
+        else
+            0
 
-    (countMissingDamaged, countMissing)
-    
+
+let chunks (input : string) = 
+    input.Split('.', StringSplitOptions.RemoveEmptyEntries)
+    |> Array.map _.Length
+
+
+let validatePartial (chunks : int array) (freq : int array) =
+        let actual = chunks |> Array.indexed
+        
+        let actualLen = chunks.Length
+        let freqLen = freq.Length
+
+        if actualLen > freqLen then
+            false
+        else
+            actual
+            |> Array.forall (fun (index, element) -> 
+                    match index with
+                    | s when s < actualLen - 1 -> element = freq[index]
+                    | _ -> index < freqLen && element <= freq[index])
+
+let validateSum (maxProjectedCount : int) (controlSum : int) =
+    maxProjectedCount >= controlSum
+
+let rec test (input : string) (frequencies : int array) (controlSum : int) (maxProjectedCount : int) : int =         
+    if validateSum maxProjectedCount controlSum = false
+        then 0
+    else
+        let result = 
+            match input.Split('?', 2) with
+            | [| str |] -> testExact str frequencies
+            | [| str1; str2 |] -> 
+                let ch = chunks str1
+                if validatePartial ch frequencies = false 
+                    then 0
+                else                    
+                    (test (String.concat "." [str1; str2]) frequencies) controlSum (maxProjectedCount - 1) +
+                    (test (String.concat "#" [str1; str2]) frequencies) controlSum maxProjectedCount
+            | s -> failwith $"should be exactly 2 items. Got {s.Length} instead"
+
+        // if result > 0 then
+        //     printfn "input: %s; freq: %A; result %d" input frequencies result
+        // Console.ReadLine() |> ignore
+        result
+
+let rec test' (input : string) (freq : int array) = 
+    let maxProjectedCount = 
+        input.ToCharArray()
+        |> Array.filter(fun c -> c = '#' || c = '?')
+        |> Array.length
+
+    test input freq (freq |> Array.sum) maxProjectedCount 
+
+
+
+let multiplyStr (input : string) (n : int) = 
+    input 
+    |> Array.replicate n
+    |> String.concat "?"
+
+
+let multiplyArr (arr : int array) (n : int) = 
+    arr
+    |> Array.replicate n
+    |> Array.collect (fun i -> i)
 
 async {
-    let sw = new System.Diagnostics.Stopwatch()
-    sw.Start()
-
     let path = Path.Combine(__SOURCE_DIRECTORY__, "Day12.txt"); 
     let! lines = File.ReadAllLinesAsync(path) |> Async.AwaitTask
 
-    // let lines = [| ".??..??...?##. 1,1,3" |]
-    
-    lines
-    |> Array.map parseLine
-    |> Array.map (
-        fun (damagedStr, frequencies) -> 
-            let damagedStrCharArr = damagedStr.ToCharArray()
-            let (missingDamaged, missingAll) = findHints damagedStrCharArr frequencies
-            let indexesSeq = getCombinationIndexes missingAll missingDamaged 0
-            let foundDamageIndexes = getDamageIndexes damagedStrCharArr
-            let foundMissingIndexes = getMissingIndexes damagedStrCharArr
+    //let lines = [| ".??..??...?##. 1,1,3" |]
 
-            let mutable positive = 0
-            let mutable counter = 0
-
-
-            for indexes in indexesSeq do
-                let indexArr = indexes |> Seq.toArray
-
-                let allDamage = applyFoundDamages (fixIndexes indexArr foundMissingIndexes) foundDamageIndexes
-                let testFrequencies = foldDamages allDamage
-
-                if test testFrequencies frequencies then
-                    positive <- positive + 1
-
-                counter <- counter + 1 
-
-                if counter % 10000 = 0 then
-                    printfn "over 10000"
-            positive
-        )
-    |> Array.sum
-    |> printfn "result: %d"
-
-//Warning. known bug for ?#.#?.?#?? [|1; 1; 1|]: 0 - should be 1
-
-//|> Array.iter (printfn "number of successful subs: %A")
-
-    sw.Stop()
-
-    printfn $"elapsed: {sw}"
+    lines 
+    |> Array.map parseLine 
+    |> Array.map (fun (input, freq) -> (multiplyStr input 5, multiplyArr freq 5))
+    |> Array.iter (fun (input, freq) -> (test' input freq) |> printfn "%d")
+//    |> Array.map (fun (input, freq) -> (test input freq))
+    // |> Array.sum
+    // |> printfn "%d"
 
 } |> Async.RunSynchronously
 
+printfn $"elapsed: {sw.Elapsed}"
