@@ -1,4 +1,4 @@
-open System
+﻿open System
 open System.IO
 
 let parseLine(input : string) : string * (int array) = 
@@ -38,14 +38,6 @@ let testPattern2 (padLeft : int) (head : int) (padRight : int) (pattern : char a
             | (_, '?') -> true
             | (a, b) -> a = b
     result
-
-let combine (leftPadSize : int) (head : int) (rightPadSize : int) = 
-    let len = leftPadSize + head + rightPadSize
-    Array.init len (fun index -> 
-        match index with
-        | a when a < leftPadSize -> '.'
-        | a when a >= leftPadSize && a < leftPadSize + head -> '#'
-        | _ -> '.')
     
 let rec generate (pattern : char array) (freq : int list) (size : int) (startIndex : int) : int =   
     let maxPadSize = size - (freq |> List.sum) - (freq.Length - 1)
@@ -75,15 +67,10 @@ let sw = System.Diagnostics.Stopwatch()
 
 sw.Start()
 
-let path = Path.Combine(__SOURCE_DIRECTORY__, "Day12.txt")
+let path = Path.Combine(Environment.CurrentDirectory, "Day12.txt")
 let lines = File.ReadAllLines(path)
 
-// let lines = @"???.### 1,1,3
-// .??..??...?##. 1,1,3
-// ?#?#?#?#?#?#?#? 1,3,1,6
-// ????.#...#... 4,1,1
-// ????.######..#####. 1,6,5
-// ?###???????? 3,2,1"
+// let lines = Array.singleton @"?.????????#??? 1,2,2"
 
 lines
     |> Array.map parseLine
@@ -91,7 +78,7 @@ lines
         let pattern' = pattern |> Array.replicate 4 |> String.concat "?"
         let freq' = freq |> Array.replicate 4 |> Array.concat |> Array.toList
 
-        generate (pattern'.ToCharArray()) freq' pattern'.Length 0 |> printfn "result %d"
+        generate (pattern'.ToCharArray()) freq' pattern'.Length 0 |> Console.WriteLine
     )
 
 sw.Stop()
