@@ -12,19 +12,27 @@ let parseLine(input : string) : string * (int array) =
     (String.concat "?" <| Array.replicate 1 str, Array.concat <| Array.replicate 1 freq)
 
 
-let testPattern (input : string) (pattern : string) : bool = 
-    (input.ToCharArray(), pattern.ToCharArray())
-    ||> Array.forall2 (fun ch p ->
-        match (ch, p) with
-        | (_, '?') -> true
-        | (a, b) -> a = b)
+let testPattern (input : char array) (pattern : char array) (startIndex : int) : bool = 
+    let mutable result = true
+    for i in 0..input.Length - 1 do
+        let ch = input[i]
+        let p = pattern[startIndex + i]
+        result <- result &&
+            match (ch, p) with
+            | (_, '?') -> true
+            | (a, b) -> a = b
+    result
+
 
 let combine (leftPadSize : int) (head : int) (rightPadSize : int) = 
-    [Array.replicate leftPadSize "."; Array.replicate head "#"; Array.replicate rightPadSize "."] 
-    |> Array.concat 
-    |> String.concat ""
-
-let rec generate (pattern : string) (freq : int list) (size : int) (startIndex : int) : int =   
+    let len = leftPadSize + head + rightPadSize
+    Array.init len (fun index -> 
+        match index with
+        | a when a < leftPadSize -> '.'
+        | a when a >= leftPadSize && a < leftPadSize + head -> '#'
+        | _ -> '.')
+    
+let rec generate (pattern : char array) (freq : int list) (size : int) (startIndex : int) : int =   
     let maxPadSize = size - (freq |> List.sum) - (freq.Length - 1)
     let minPadSize = if startIndex = 0 then 0 else 1
 
@@ -35,13 +43,13 @@ let rec generate (pattern : string) (freq : int list) (size : int) (startIndex :
     | [head] -> 
         [minPadSize..maxPadSize]
         |> List.map (fun padSize -> combine padSize head (size - (padSize + head)))
-        |> List.filter (fun prefix -> testPattern prefix (pattern.Substring(startIndex, prefix.Length)))
+        |> List.filter (fun prefix -> testPattern prefix pattern startIndex)
         |> List.length
     | head :: tail -> 
         [minPadSize..maxPadSize] 
         |> List.rev
         |> List.map (fun p -> (p, combine p head 0))
-        |> List.filter (fun (_, prefix) -> testPattern prefix (pattern.Substring(startIndex, prefix.Length))) 
+        |> List.filter (fun (_, prefix) -> testPattern prefix pattern startIndex) 
         |> List.map (fun (padSize, prefix) -> 
             generate' tail (size - (padSize + head)) (startIndex + padSize + head)
         )
@@ -70,7 +78,7 @@ lines
         let pattern' = pattern |> Array.replicate 4 |> String.concat "?"
         let freq' = freq |> Array.replicate 4 |> Array.concat |> Array.toList
 
-        generate pattern' freq' pattern'.Length 0 |> printfn "result %d"
+        generate (pattern'.ToCharArray()) freq' pattern'.Length 0 |> printfn "result %d"
     )
 
 sw.Stop()
